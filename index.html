@@ -1,0 +1,49 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>智能分拣 · 抓取放置演示</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <div class="app">
+    <main class="display" id="competitionDisplay" aria-label="比赛显示器画面">
+      <header class="display-head">
+        <div><div class="eyebrow">INTELLIGENT SORTING · LIVE DEMO</div><h1>智能分拣运行展示</h1></div>
+        <div class="status" id="status">模型加载中</div>
+      </header>
+      <div class="display-grid">
+        <section class="viewer-panel" aria-label="装配体抓取放置动画">
+          <div class="viewer-top"><span>架构装配体 · 三维动作演示</span><span class="viewer-tag">初模轨迹模拟</span></div>
+          <canvas id="modelCanvas"></canvas>
+          <div class="viewer-overlay"><span class="live-dot"></span><span id="actionText">正在载入装配体网格…</span></div>
+          <div class="loading" id="loading">正在加载模型，请稍候…</div>
+        </section>
+        <section class="result-panel" aria-label="本次分拣信息与数量">
+          <div class="summary"><div><div class="small-label">分拣成功总数量</div><div class="total" id="total">0</div></div><div class="summary-foot">完全进入正确储物盒后计数</div></div>
+          <div class="latest"><div class="small-label">最新成功分拣货物</div><div class="latest-inner"><div class="item-image" id="itemImage"><span>◇</span></div><div><div class="item-name" id="itemName">等待开始</div><div class="item-detail" id="itemDetail">序号 — · 储物盒 —</div></div></div></div>
+          <div class="bin-heading">六个储物盒 <span>当前数量</span></div>
+          <div class="bins" id="binList"></div>
+        </section>
+      </div>
+      <footer class="display-foot"><span id="progress">待机 · 0 / 12</span><span>上方为比赛显示画面 · 无操作按钮</span></footer>
+    </main>
+
+    <section class="operator" aria-label="电脑模拟操作界面">
+      <div class="operator-head"><div><div class="eyebrow">OPERATOR CONSOLE</div><h2>电脑模拟操作界面</h2></div><button id="fullscreenBtn" class="ghost">全屏显示上方画面</button></div>
+      <div class="operator-grid">
+        <div class="control-card"><h3>模拟一件货物</h3><p>选择货物与储物盒，观看夹爪抓取、搬运和放置。</p><div class="field-row"><label>货物<select id="typeSelect"></select></label><label>目标储物盒<select id="boxSelect"></select></label></div><label class="check"><input type="checkbox" id="failCheck"> 本次模拟未完全入盒（不计数）</label><button id="runOneBtn" class="primary">演示抓取与放置</button></div>
+        <div class="control-card"><h3>完整流程与复位</h3><p>自动分拣 12 件货物、6 个类别；每件放置并显示后再处理下一件。</p><div class="button-row"><button id="runAllBtn" class="primary">自动演示 12 件</button><button id="resetBtn" class="ghost">重置本轮</button></div><div class="note" id="operatorNote">模型已从当前初模导出；动作路径为演示设定，可随机构改进调整。</div></div>
+        <div class="control-card log-card"><h3>动作记录</h3><ol id="eventLog" aria-live="polite"></ol></div>
+      </div>
+    </section>
+  </div>
+  <script src="scene-data-1.js"></script>
+  <script src="scene-data-2.js"></script>
+  <script src="scene-data-3.js"></script>
+  <script src="scene-data-4.js"></script>
+  <script src="scene-data-loader.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
