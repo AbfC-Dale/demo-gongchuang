@@ -44338,6 +44338,14 @@ void main() {
   var busy = false;
   var auto = false;
   var attempt = 0;
+  function loadingProgress(percent, stage, message) {
+    const value = Math.max(0, Math.min(100, Math.round(percent)));
+    $("loading").style.setProperty("--load-progress", `${value}%`);
+    $("loadingFill").style.width = `${value}%`;
+    $("loadingPercent").textContent = `${value}%`;
+    $("loadingStage").textContent = stage;
+    $("loadingMessage").textContent = message;
+  }
   function status(text, kind = "") {
     $("status").textContent = text;
     $("status").className = `status ${kind}`;
@@ -44426,7 +44434,8 @@ void main() {
     xStage.position.set(machineXAxis.x * pose.x, machineXAxis.y * pose.x, 0);
     zStage.position.z = pose.z;
     toolRotation.rotation.z = pose.rz;
-    $("axisReadout").textContent = `X ${pose.x.toFixed(0)} mm \xB7 Z ${pose.z.toFixed(0)} mm \xB7 Rz ${(pose.rz * 180 / Math.PI).toFixed(0)}\xB0 \xB7 \u65E0\u72EC\u7ACB Y \u8F74`;
+    const shownRz = Math.atan2(Math.sin(pose.rz), Math.cos(pose.rz));
+    $("axisReadout").textContent = `X ${pose.x.toFixed(0)} mm \xB7 Z ${pose.z.toFixed(0)} mm \xB7 Rz ${(shownRz * 180 / Math.PI).toFixed(0)}\xB0 \xB7 \u65E0\u72EC\u7ACB Y \u8F74`;
     screw.rotation.z = -pose.z * Math.PI * 2 / 24;
     if (carrying && currentCargo) {
       const tip = toolPosition(pose, toolTip), offset = rotateOffset(carryOffset, pose.rz);
@@ -44474,6 +44483,7 @@ void main() {
   }
   async function setupScene() {
     const setupStart = performance.now();
+    loadingProgress(2, "\u6E32\u67D3\u5668", "\u6B63\u5728\u5EFA\u7ACB\u4E09\u7EF4\u573A\u666F\u2026");
     const canvas = $("modelCanvas");
     renderer = new WebGLRenderer({ canvas, antialias: true, powerPreference: "high-performance" });
     renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 1.7));
@@ -44515,7 +44525,19 @@ void main() {
     scene.add(soft);
     const loader = new GLTFLoader();
     loader.setMeshoptDecoder(MeshoptDecoder);
-    const gltf = await loader.loadAsync("scene.glb");
+    loadingProgress(5, "\u6A21\u578B\u4F20\u8F93", "\u6B63\u5728\u4E0B\u8F7D\u88C5\u914D\u4F53\u7F51\u683C\u2026");
+    const gltf = await loader.loadAsync("scene.glb", (event) => {
+      if (event.lengthComputable && event.total > 0) {
+        loadingProgress(5 + 77 * event.loaded / event.total, "\u6A21\u578B\u4F20\u8F93", `\u5DF2\u4E0B\u8F7D ${(event.loaded / 1048576).toFixed(1)} / ${(event.total / 1048576).toFixed(1)} MB`);
+      } else {
+        $("loadingMessage").textContent = `\u5DF2\u4E0B\u8F7D ${(event.loaded / 1048576).toFixed(1)} MB\uFF0C\u6B63\u5728\u83B7\u53D6\u6A21\u578B\u2026`;
+        $("loadingStage").textContent = "\u6A21\u578B\u4F20\u8F93";
+        $("loadingPercent").textContent = "\u52A0\u8F7D\u4E2D";
+        $("loading").classList.add("indeterminate");
+      }
+    });
+    $("loading").classList.remove("indeterminate");
+    loadingProgress(84, "\u7F51\u683C\u89E3\u7801", "\u538B\u7F29\u7F51\u683C\u5DF2\u63A5\u6536\uFF0C\u6B63\u5728\u8FD8\u539F\u6A21\u578B\u2026");
     console.log(`GLB\u4E0B\u8F7D\u548C\u89E3\u7801 ${(performance.now() - setupStart).toFixed(0)} ms`);
     gltf.scene.updateMatrixWorld(true);
     const geometryFor = (part) => {
@@ -44532,7 +44554,7 @@ void main() {
     };
     const originalBins = data.bins.map((bin) => ({ bin, x: bin.position[0], y: bin.position[1] }));
     const originalPickup = [...data.pickup];
-    for (const part of data.meshes) {
+    for (const [partIndex, part] of data.meshes.entries()) {
       const geometry = geometryFor(part);
       const isBin = part.name.startsWith("\u96F6\u4EF66.");
       if (isBin) {
@@ -44572,6 +44594,7 @@ void main() {
       mesh.name = part.name;
       stageFor(part.name).add(mesh);
       part.stl = null;
+      if (partIndex % 8 === 0) loadingProgress(86 + 10 * partIndex / data.meshes.length, "\u573A\u666F\u7EC4\u88C5", `\u6B63\u5728\u653E\u7F6E\u88C5\u914D\u96F6\u4EF6 ${partIndex + 1} / ${data.meshes.length}\u2026`);
     }
     console.log(`\u96F6\u4EF6\u5165\u573A ${(performance.now() - setupStart).toFixed(0)} ms`);
     const gripperGeometry = geometryFor(data.gripper);
@@ -44647,6 +44670,7 @@ void main() {
       renderer.render(scene, camera);
     }
     draw();
+    loadingProgress(98, "\u8F68\u8FF9\u89C4\u5212", "\u6B63\u5728\u751F\u6210\u6293\u653E\u8DEF\u5F84\u4E0E\u6599\u76D2\u8BA1\u6570\u2026");
     console.log(`\u573A\u666F\u5C31\u7EEA ${(performance.now() - setupStart).toFixed(0)} ms`);
   }
   function wait(ms) {
@@ -45004,11 +45028,15 @@ void main() {
     await setupScene();
     ready = true;
     setBusy(false);
-    $("loading").classList.add("hidden");
     reset();
+    loadingProgress(100, "\u51C6\u5907\u5B8C\u6210", "\u6A21\u578B\u4E0E\u6293\u653E\u89C4\u5212\u5DF2\u5C31\u7EEA");
+    requestAnimationFrame(() => $("loading").classList.add("hidden"));
   }
   boot().catch((error2) => {
-    $("loading").textContent = `\u6A21\u578B\u52A0\u8F7D\u5931\u8D25\uFF1A${error2}`;
+    $("loading").classList.add("failed");
+    $("loadingStage").textContent = "\u52A0\u8F7D\u5931\u8D25";
+    $("loadingMessage").textContent = String(error2);
+    $("loadingPercent").textContent = "\u8BF7\u5237\u65B0";
     status("\u52A0\u8F7D\u5931\u8D25", "bad");
     console.error(error2);
   });

@@ -5,6 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>智能分拣 · 抓取放置演示</title>
   <link rel="stylesheet" href="style.css">
+  <link rel="stylesheet" href="ui-glass.css">
 </head>
 <body>
   <div class="app">
@@ -19,7 +20,16 @@
           <div class="axis-readout" id="axisReadout">X 0 mm · Z -70 mm · Rz 0° · 无独立 Y 轴</div>
           <canvas id="modelCanvas"></canvas>
           <div class="viewer-overlay"><span class="live-dot"></span><span id="actionText">正在载入装配体网格…</span></div>
-          <div class="loading" id="loading">正在加载模型，请稍候…</div>
+          <div class="loading" id="loading" role="status" aria-live="polite">
+            <div class="loading-card">
+              <div class="loading-orbit" aria-hidden="true"><span></span><span></span><span></span><i>3D</i></div>
+              <div class="loading-kicker">ASSEMBLY DIGITAL TWIN</div>
+              <div class="loading-title">正在准备分拣模型</div>
+              <div class="loading-desc" id="loadingMessage">连接模型资源…</div>
+              <div class="loading-meter"><span id="loadingFill"></span></div>
+              <div class="loading-meta"><span id="loadingStage">初始化</span><strong id="loadingPercent">0%</strong></div>
+            </div>
+          </div>
         </section>
         <section class="result-panel" aria-label="本次分拣信息与数量">
           <div class="summary"><div><div class="small-label">分拣成功总数量</div><div class="total" id="total">0</div></div><div class="summary-foot">完全进入正确储物盒后计数</div></div>
