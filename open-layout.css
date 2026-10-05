@@ -35,6 +35,13 @@ body { background: var(--page); color: var(--ink); }
   font-size: 13px; font-weight: 650; text-shadow: none;
 }
 .viewer-tag { border: 0; padding: 0; border-radius: 0; background: none; box-shadow: none; color: #948b99; font-size: 11px; }
+.viewer-actions { display: flex; align-items: center; gap: 17px; }
+.viewer-toggle {
+  border: 0; min-height: 32px; padding: 5px 3px; background: none; color: var(--accent);
+  font: inherit; font-size: 12px; font-weight: 700; cursor: pointer;
+}
+.viewer-toggle:hover { text-decoration: underline; }
+.viewer-toggle:focus-visible { outline: 2px solid var(--accent); outline-offset: 4px; }
 .axis-readout {
   top: 53px; left: 48px; padding: 0; color: #77707c;
   border: 0; border-radius: 0; background: none; box-shadow: none;
@@ -129,6 +136,9 @@ select { border-color: #d6d1d9; border-radius: 7px; background: #fff; }
 #eventLog li { border: 0; padding: 5px 0; }
 .loading { background: #f7f7f9eF; backdrop-filter: blur(8px); }
 .loading-card { border: 0; background: none; box-shadow: none; backdrop-filter: none; }
+.loading-file-size { margin-top: 7px; color: var(--muted); font-size: 11px; font-weight: 600; }
+.loading-meter-label { margin-top: 20px; text-align: left; font-size: 11px; font-weight: 650; color: var(--muted); }
+.loading-meter-label + .loading-meter { margin-top: 7px; }
 @media (max-width: 1050px) {
   .display-grid { grid-template-columns: minmax(0, 1.35fr) minmax(290px, .65fr); }
   .viewer-top, .axis-readout, .viewer-overlay { left: 28px; }
@@ -155,6 +165,9 @@ select { border-color: #d6d1d9; border-radius: 7px; background: #fff; }
 @media (max-width: 520px) {
   .viewer-panel, #modelCanvas { min-height: 375px; }
   .viewer-top { top: 15px; left: 18px; right: 18px; font-size: 11px; }
+  .viewer-actions { gap: 7px; }
+  .viewer-tag { display: none; }
+  .viewer-toggle { font-size: 11px; }
   .axis-readout { top: 40px; left: 18px; font-size: 10px; }
   .viewer-overlay { left: 18px; right: 18px; bottom: 8px; font-size: 11px; }
   .result-panel { padding: 17px 22px 34px; grid-template-columns: 1fr 1fr; gap: 20px; }
@@ -220,6 +233,7 @@ body.landscape-mode .viewer-panel, body.landscape-mode #modelCanvas { min-height
   body.landscape-mode .viewer-panel { min-width: 0; }
   body.landscape-mode .viewer-top { top: 7px; left: 17px; right: 13px; font-size: 10px; }
   body.landscape-mode .viewer-tag { display: none; }
+  body.landscape-mode .viewer-toggle { font-size: 10px; }
   body.landscape-mode .axis-readout { top: 25px; left: 17px; font-size: 9px; }
   body.landscape-mode .viewer-overlay { left: 17px; right: 10px; bottom: 5px; font-size: 10px; }
   body.landscape-mode .result-panel {

@@ -56307,8 +56307,45 @@ void main() {
     throw new Error(`\u672A\u6807\u5B9A\u7684\u88C5\u914D\u96F6\u4EF6\uFF1A${name}`);
   }
 
+  // glb-transfer.mjs
+  function formatMiB(bytes) {
+    return `${(bytes / 1048576).toFixed(2)} MiB`;
+  }
+  async function fetchGlbBytes(url, expectedBytes, onProgress) {
+    const response = await fetch(url);
+    if (!response.ok) throw new Error(`\u6A21\u578B\u4E0B\u8F7D\u5931\u8D25\uFF1AHTTP ${response.status}`);
+    const total = Number.isSafeInteger(expectedBytes) && expectedBytes > 0 ? expectedBytes : 0;
+    const chunks = [];
+    let loaded = 0;
+    if (response.body?.getReader) {
+      const reader = response.body.getReader();
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        chunks.push(value);
+        loaded += value.byteLength;
+        onProgress?.(loaded, total);
+        if (total && loaded > total) throw new Error("\u6A21\u578B\u6587\u4EF6\u5927\u5C0F\u4E0E\u5F53\u524D\u6F14\u793A\u7248\u672C\u4E0D\u4E00\u81F4");
+      }
+    } else {
+      const bytes = new Uint8Array(await response.arrayBuffer());
+      chunks.push(bytes);
+      loaded = bytes.byteLength;
+      onProgress?.(loaded, total);
+    }
+    if (total && loaded !== total) throw new Error(`\u6A21\u578B\u6587\u4EF6\u5927\u5C0F\u4E0D\u7B26\uFF1A\u8BFB\u53D6 ${loaded} \u5B57\u8282\uFF0C\u5E94\u4E3A ${total} \u5B57\u8282`);
+    const result = new Uint8Array(loaded);
+    let offset = 0;
+    for (const chunk of chunks) {
+      result.set(chunk, offset);
+      offset += chunk.byteLength;
+    }
+    return result.buffer;
+  }
+
   // main-glb-trial.js
   var data = window.SORTER_SCENE_DATA;
+  var MODEL_GLB_BYTES = 3900032;
   var $ = (id) => document.getElementById(id);
   var TYPES = [
     { name: "\u7EA2\u8272\u6B63\u65B9\u4F53", color: "#e55e59", shape: "cube", box: 1, radius: 12, height: 24 },
@@ -56362,6 +56399,12 @@ void main() {
   var toolTip;
   var currentCargo;
   var carrying = false;
+  var frameMeshes = [];
+  var frameHiddenByUser = false;
+  var frameHiddenForFollow = false;
+  var cameraFollow = { phase: "idle", cargo: null, bin: null, returnPosition: null, returnTarget: null };
+  var cameraFollowEnabled = true;
+  var followSubject = null;
   var gripBasePositions;
   var gripDisplacements;
   var gripClosure = 0;
@@ -56372,13 +56415,114 @@ void main() {
   var busy = false;
   var auto = false;
   var attempt = 0;
-  function loadingProgress(percent, stage, message) {
+  function loadingProgress(percent, stage, message, progressText) {
     const value = Math.max(0, Math.min(100, Math.round(percent)));
     $("loading").style.setProperty("--load-progress", `${value}%`);
     $("loadingFill").style.width = `${value}%`;
-    $("loadingPercent").textContent = `${value}%`;
+    $("loadingPercent").textContent = progressText ?? `${value}%`;
     $("loadingStage").textContent = stage;
     $("loadingMessage").textContent = message;
+  }
+  function syncFrameVisibility() {
+    const hidden = frameHiddenByUser || frameHiddenForFollow;
+    for (const mesh of frameMeshes) mesh.visible = !hidden;
+    $("frameToggleBtn").textContent = hidden ? "\u663E\u793A\u673A\u67B6" : "\u9690\u85CF\u673A\u67B6";
+    $("frameToggleBtn").setAttribute("aria-pressed", String(hidden));
+  }
+  function toggleFrame() {
+    const currentlyHidden = frameHiddenByUser || frameHiddenForFollow;
+    frameHiddenForFollow = false;
+    frameHiddenByUser = !currentlyHidden;
+    syncFrameVisibility();
+  }
+  function updateFollowControls() {
+    $("followToggleBtn").textContent = `\u955C\u5934\u8DDF\u968F\uFF1A${cameraFollowEnabled ? "\u5F00" : "\u5173"}`;
+    $("followToggleBtn").setAttribute("aria-pressed", String(cameraFollowEnabled));
+    $("cameraModeTag").textContent = cameraFollowEnabled ? cameraFollow.phase === "carry" || cameraFollow.phase === "release" ? "\u955C\u5934\u8DDF\u968F\u4E2D" : "\u521D\u6A21\u8F68\u8FF9\u6A21\u62DF" : "\u56FA\u5B9A\u89C6\u89D2";
+  }
+  function activateCameraFollow() {
+    if (!cameraFollowEnabled || !followSubject) return;
+    if (cameraFollow.phase === "idle") {
+      cameraFollow.returnPosition = camera.position.clone();
+      cameraFollow.returnTarget = controls.target.clone();
+    }
+    cameraFollow.phase = followSubject.phase;
+    cameraFollow.cargo = followSubject.cargo;
+    cameraFollow.bin = followSubject.bin;
+    controls.enabled = false;
+    frameHiddenForFollow = true;
+    syncFrameVisibility();
+    updateFollowControls();
+  }
+  function beginCameraFollow(cargo, bin) {
+    followSubject = { cargo, bin, phase: "carry" };
+    activateCameraFollow();
+  }
+  function setCameraFollowPhase(phase) {
+    if (followSubject) followSubject.phase = phase;
+    if (cameraFollow.phase === "carry" || cameraFollow.phase === "release") cameraFollow.phase = phase;
+  }
+  function endCameraFollow(immediate = false, preserveSubject = false) {
+    if (!preserveSubject) followSubject = null;
+    if (cameraFollow.phase === "idle") return;
+    if (cameraFollow.phase === "restore" && !immediate) return;
+    frameHiddenForFollow = false;
+    syncFrameVisibility();
+    if (immediate || !cameraFollow.returnPosition) {
+      if (cameraFollow.returnPosition) camera.position.copy(cameraFollow.returnPosition);
+      if (cameraFollow.returnTarget) controls.target.copy(cameraFollow.returnTarget);
+      camera.lookAt(controls.target);
+      cameraFollow.phase = "idle";
+      controls.enabled = true;
+    } else cameraFollow.phase = "restore";
+    updateFollowControls();
+  }
+  function toggleCameraFollow() {
+    cameraFollowEnabled = !cameraFollowEnabled;
+    if (cameraFollowEnabled) activateCameraFollow();
+    else {
+      cameraFollow.phase = "idle";
+      cameraFollow.cargo = null;
+      cameraFollow.bin = null;
+      controls.enabled = true;
+      frameHiddenForFollow = false;
+      syncFrameVisibility();
+    }
+    updateFollowControls();
+  }
+  function updateCameraFollow(elapsed) {
+    const alpha = 1 - Math.exp(-Math.min(elapsed, 0.05) * 4.1);
+    let target, position;
+    if (cameraFollow.phase === "restore") {
+      target = cameraFollow.returnTarget;
+      position = cameraFollow.returnPosition;
+    } else {
+      const cargoWorld = cameraFollow.cargo.getWorldPosition(new Vector3());
+      const binWorld = modelRoot.localToWorld(new Vector3(...cameraFollow.bin.position));
+      const release = cameraFollow.phase === "release";
+      target = cargoWorld.clone().lerp(binWorld, release ? 0.43 : 0.14);
+      target.z += release ? 82 : 72;
+      const separation = cargoWorld.distanceTo(binWorld);
+      const distance = Math.min(840, (release ? 625 : 675) + separation * (release ? 0.25 : 0.15));
+      const azimuth = -1.65 - pose.rz * 0.22;
+      position = target.clone().add(new Vector3(
+        Math.cos(azimuth) * distance * 0.78,
+        Math.sin(azimuth) * distance * 0.78,
+        distance * 0.8
+      ));
+    }
+    controls.target.lerp(target, alpha);
+    camera.position.lerp(position, alpha);
+    camera.lookAt(controls.target);
+    if (cameraFollow.phase === "restore" && camera.position.distanceTo(position) < 2 && controls.target.distanceTo(target) < 1) {
+      camera.position.copy(position);
+      controls.target.copy(target);
+      camera.lookAt(target);
+      cameraFollow.phase = "idle";
+      cameraFollow.cargo = null;
+      cameraFollow.bin = null;
+      controls.enabled = true;
+    }
   }
   function status(text, kind = "") {
     $("status").textContent = text;
@@ -56525,7 +56669,7 @@ void main() {
   }
   async function setupScene() {
     const setupStart = performance.now();
-    loadingProgress(2, "\u6E32\u67D3\u5668", "\u6B63\u5728\u5EFA\u7ACB\u4E09\u7EF4\u573A\u666F\u2026");
+    loadingProgress(0, "\u6E32\u67D3\u5668", "\u6B63\u5728\u5EFA\u7ACB\u4E09\u7EF4\u573A\u666F\u2026", "\u51C6\u5907\u4E2D");
     const canvas = $("modelCanvas");
     renderer = new WebGLRenderer({ canvas, antialias: true, powerPreference: "high-performance" });
     renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 1.7));
@@ -56559,20 +56703,15 @@ void main() {
     scene.add(soft);
     const loader = new GLTFLoader();
     loader.setMeshoptDecoder(MeshoptDecoder);
-    loadingProgress(5, "\u6A21\u578B\u4F20\u8F93", "\u6B63\u5728\u4E0B\u8F7D\u88C5\u914D\u4F53\u7F51\u683C\u2026");
-    const gltf = await loader.loadAsync("scene.glb", (event) => {
-      if (event.lengthComputable && event.total > 0) {
-        loadingProgress(5 + 77 * event.loaded / event.total, "\u6A21\u578B\u4F20\u8F93", `\u5DF2\u4E0B\u8F7D ${(event.loaded / 1048576).toFixed(1)} / ${(event.total / 1048576).toFixed(1)} MB`);
-      } else {
-        $("loadingMessage").textContent = `\u5DF2\u4E0B\u8F7D ${(event.loaded / 1048576).toFixed(1)} MB\uFF0C\u6B63\u5728\u83B7\u53D6\u6A21\u578B\u2026`;
-        $("loadingStage").textContent = "\u6A21\u578B\u4F20\u8F93";
-        $("loadingPercent").textContent = "\u52A0\u8F7D\u4E2D";
-        $("loading").classList.add("indeterminate");
-      }
+    $("loadingFileSize").textContent = `\u6A21\u578B\u6587\u4EF6\uFF1A${MODEL_GLB_BYTES.toLocaleString("zh-CN")} \u5B57\u8282 \xB7 ${formatMiB(MODEL_GLB_BYTES)}`;
+    loadingProgress(0, "\u6A21\u578B\u4F20\u8F93", "\u6B63\u5728\u8BFB\u53D6\u88C5\u914D\u4F53\u6A21\u578B\u2026");
+    const glbBytes = await fetchGlbBytes("scene.glb", MODEL_GLB_BYTES, (loaded, total) => {
+      const percent = Math.min(100, Math.floor(loaded / total * 100));
+      loadingProgress(percent, "\u6A21\u578B\u4F20\u8F93", `\u5DF2\u8BFB\u53D6 ${loaded.toLocaleString("zh-CN")} / ${total.toLocaleString("zh-CN")} \u5B57\u8282`);
     });
-    $("loading").classList.remove("indeterminate");
-    loadingProgress(84, "\u7F51\u683C\u89E3\u7801", "\u538B\u7F29\u7F51\u683C\u5DF2\u63A5\u6536\uFF0C\u6B63\u5728\u8FD8\u539F\u6A21\u578B\u2026");
-    console.log(`GLB\u4E0B\u8F7D\u548C\u89E3\u7801 ${(performance.now() - setupStart).toFixed(0)} ms`);
+    loadingProgress(100, "\u7F51\u683C\u89E3\u7801", `\u5DF2\u8BFB\u53D6 ${formatMiB(glbBytes.byteLength)}\uFF0C\u6B63\u5728\u8FD8\u539F\u538B\u7F29\u7F51\u683C\u2026`, "\u89E3\u7801\u4E2D");
+    const gltf = await loader.parseAsync(glbBytes, "");
+    console.log(`GLB\u8BFB\u53D6\u548C\u89E3\u7801 ${(performance.now() - setupStart).toFixed(0)} ms`);
     gltf.scene.updateMatrixWorld(true);
     const geometryFor = (part) => {
       const node = gltf.scene.getObjectByName(part.glbNode);
@@ -56627,9 +56766,11 @@ void main() {
       const mesh = new Mesh(geometry, material);
       mesh.name = part.name;
       stageFor(part.name).add(mesh);
+      if (part.name.startsWith("\u578B\u6750")) frameMeshes.push(mesh);
       part.stl = null;
-      if (partIndex % 8 === 0) loadingProgress(86 + 10 * partIndex / data.meshes.length, "\u573A\u666F\u7EC4\u88C5", `\u6B63\u5728\u653E\u7F6E\u88C5\u914D\u96F6\u4EF6 ${partIndex + 1} / ${data.meshes.length}\u2026`);
+      if (partIndex % 8 === 0) loadingProgress(100, "\u573A\u666F\u7EC4\u88C5", `\u6B63\u5728\u653E\u7F6E\u88C5\u914D\u96F6\u4EF6 ${partIndex + 1} / ${data.meshes.length}\u2026`, "\u7EC4\u88C5\u4E2D");
     }
+    syncFrameVisibility();
     console.log(`\u96F6\u4EF6\u5165\u573A ${(performance.now() - setupStart).toFixed(0)} ms`);
     const gripperGeometry = geometryFor(data.gripper);
     const gripMaterial = new MeshStandardMaterial({ color: data.gripper.color, metalness: 0.32, roughness: 0.47, side: DoubleSide });
@@ -56700,11 +56841,12 @@ void main() {
         }
         for (const pair of fallingCargo) copyBodyToMesh(pair.body, pair.mesh);
       }
-      controls.update();
+      if (cameraFollow.phase === "idle") controls.update();
+      else updateCameraFollow(elapsed);
       renderer.render(scene, camera);
     }
     draw();
-    loadingProgress(98, "\u8F68\u8FF9\u89C4\u5212", "\u6B63\u5728\u751F\u6210\u6293\u653E\u8DEF\u5F84\u4E0E\u6599\u76D2\u8BA1\u6570\u2026");
+    loadingProgress(100, "\u8F68\u8FF9\u89C4\u5212", "\u6B63\u5728\u751F\u6210\u6293\u653E\u8DEF\u5F84\u4E0E\u6599\u76D2\u8BA1\u6570\u2026", "\u89C4\u5212\u4E2D");
     console.log(`\u573A\u666F\u5C31\u7EEA ${(performance.now() - setupStart).toFixed(0)} ms`);
   }
   function wait(ms) {
@@ -56793,6 +56935,7 @@ void main() {
     }
     carryOffset.set(Math.cos(pose.rz) * dx + Math.sin(pose.rz) * dy, -Math.sin(pose.rz) * dx + Math.cos(pose.rz) * dy, cargo.position.z - tipAtGrip.z);
     carrying = true;
+    beginCameraFollow(cargo, bin);
     log2(`\u4E09\u6307\u63A5\u89E6\u8BC4\u5206 ${contact.quality.toFixed(2)}\uFF1B${type.name} \u5148\u77ED\u8DDD\u79BB\u8BD5\u62AC\u3002`);
     await moveRig({ x: pick.x, rz: pick.rz, z: Math.max(raisedZ, pick.z - profile.trialLift) }, 260);
     await moveRig({ x: pick.x, rz: pick.rz, z: raisedZ }, 650);
@@ -56800,6 +56943,7 @@ void main() {
     action(`X \u4F38\u7F29\u4E0E Rz \u65CB\u8F6C\uFF0C\u643A\u5E26 ${type.name} \u524D\u5F80 ${box} \u53F7\u50A8\u7269\u76D2`);
     const drop = { ...dropPreflight, z: raisedZ };
     await moveAtClearanceRoute({ x: drop.x, rz: drop.rz, z: raisedZ });
+    setCameraFollowPhase("release");
     status("\u653E\u7F6E\u4E2D");
     action(drop.mode === "edge" ? "\u5728\u6599\u76D2\u8FB9\u7F18\u91CA\u653E\uFF1B\u7269\u5757\u5C06\u4E0E\u76D2\u6CBF\u3001\u5185\u58C1\u548C\u76D2\u5E95\u63A5\u89E6\u6EDA\u843D" : "\u5728\u6599\u76D2\u5185\u90E8\u8303\u56F4\u91CA\u653E\uFF1B\u7B49\u5F85\u7269\u5757\u5B9E\u9645\u843D\u5E95");
     await moveRig(drop, 700);
@@ -56834,6 +56978,7 @@ void main() {
       log2(`\u672A\u8BA1\u6570\uFF1A${record.id} ${type.name}\uFF0C\u539F\u56E0\uFF1A${reason}\uFF1B\u91CA\u653E\u70B9 (${drop.point.x.toFixed(1)},${drop.point.y.toFixed(1)})\uFF0C\u843D\u70B9 (${body.position.x.toFixed(1)},${body.position.y.toFixed(1)},${body.position.z.toFixed(1)})\uFF0C\u901F\u5EA6 ${body.velocity.length().toFixed(1)}\uFF0C\u89D2\u901F\u5EA6 ${body.angularVelocity.length().toFixed(1)}\u3002`);
     }
     await wait(1e3);
+    endCameraFollow();
     currentCargo = null;
     record.state = "done";
     await moveRig({ x: drop.x, rz: drop.rz, z: raisedZ }, 600);
@@ -56857,6 +57002,7 @@ void main() {
       currentCargo = record.mesh;
       carryOffset.set(Math.cos(pose.rz) * dx + Math.sin(pose.rz) * dy, -Math.sin(pose.rz) * dx + Math.cos(pose.rz) * dy, original.z - tip.z);
       carrying = true;
+      beginCameraFollow(record.mesh, { position: [...record.position] });
       await moveRig({ x: pick.x, rz: pick.rz, z: Math.max(DEMO_LIMITS.zSafe, pick.z - profile.trialLift) }, 320);
       action(`\u8BD5\u62AC\u901A\u8FC7\uFF1A\u4E09\u6307\u63A5\u89E6\u8BC4\u5206 ${contact.quality.toFixed(2)}\uFF0C\u51C6\u5907\u653E\u56DE\u53D6\u7269\u76D8\u3002`);
       await wait(350);
@@ -56867,6 +57013,7 @@ void main() {
       status("\u6293\u53D6\u9A8C\u8BC1\u5B8C\u6210", "good");
       log2(`${record.id} ${record.type.name}\uFF1A\u6293\u53D6\u3001\u8BD5\u62AC\u3001\u653E\u56DE\u5B8C\u6210\uFF1B\u4E0D\u8BA1\u5165\u5206\u62E3\u6570\u91CF\u3002`);
     } finally {
+      endCameraFollow();
       carrying = false;
       currentCargo = null;
       record.mesh.position.copy(original);
@@ -56916,6 +57063,7 @@ void main() {
       action(String(error2));
       log2(`\u9519\u8BEF\uFF1A${error2}`);
     } finally {
+      endCameraFollow();
       setBusy(false);
       $("failCheck").checked = false;
     }
@@ -56944,6 +57092,7 @@ void main() {
       action(String(error2));
       log2(`\u9519\u8BEF\uFF1A${error2}`);
     } finally {
+      endCameraFollow();
       auto = false;
       setBusy(false);
       renderBins();
@@ -56951,6 +57100,7 @@ void main() {
   }
   function reset(force = false) {
     if (!ready || busy && force !== true) return;
+    endCameraFollow(true);
     for (const cargo of stagedCargo) {
       modelRoot.remove(cargo);
       cargo.geometry.dispose();
@@ -57053,6 +57203,8 @@ void main() {
     $("runAllBtn").addEventListener("click", runAll);
     $("resetBtn").addEventListener("click", reset);
     $("shuffleBtn").addEventListener("click", randomizeLayout);
+    $("frameToggleBtn").addEventListener("click", toggleFrame);
+    $("followToggleBtn").addEventListener("click", toggleCameraFollow);
     $("fullscreenBtn").addEventListener("click", () => {
       if (document.fullscreenElement) document.exitFullscreen();
       else $("competitionDisplay").requestFullscreen();
@@ -57092,7 +57244,7 @@ void main() {
     ready = true;
     setBusy(false);
     reset();
-    loadingProgress(100, "\u51C6\u5907\u5B8C\u6210", "\u6A21\u578B\u4E0E\u6293\u653E\u89C4\u5212\u5DF2\u5C31\u7EEA");
+    loadingProgress(100, "\u51C6\u5907\u5B8C\u6210", `\u6A21\u578B\u4E0E\u6293\u653E\u89C4\u5212\u5DF2\u5C31\u7EEA \xB7 \u6A21\u578B ${formatMiB(MODEL_GLB_BYTES)}`);
     requestAnimationFrame(() => $("loading").classList.add("hidden"));
   }
   boot().catch((error2) => {
