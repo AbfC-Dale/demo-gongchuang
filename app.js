@@ -56245,7 +56245,7 @@ void main() {
     }
     if (["cube", "pentagon", "tetra"].some((shape) => byShape.get(shape)?.length !== 4)) throw new Error("\u968F\u673A\u5E03\u5C40\u8981\u6C42\u4E09\u79CD\u5F62\u72B6\u5404 4 \u4EF6");
     const width = bounds.xMax - bounds.xMin, height = bounds.yMax - bounds.yMin;
-    if (width < 155 || height < 155) throw new Error("\u53D6\u7269\u76D8\u7A7A\u95F4\u4E0D\u8DB3\uFF0C\u65E0\u6CD5\u4FDD\u8BC1\u8FB9\u7F18\u548C\u7269\u5757\u95F4\u9699");
+    if (width < 155 - 1e-3 || height < 155 - 1e-3) throw new Error("\u53D6\u7269\u76D8\u7A7A\u95F4\u4E0D\u8DB3\uFF0C\u65E0\u6CD5\u4FDD\u8BC1\u8FB9\u7F18\u548C\u7269\u5757\u95F4\u9699");
     const columns = [0.195, 0.5, 0.805].map((u) => bounds.xMin + u * width);
     const rows = [0.125, 0.37, 0.625, 0.855].map((v) => bounds.yMin + v * height);
     const cubes = shuffle(byShape.get("cube"), random);
