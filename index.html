@@ -18,7 +18,7 @@
       </header>
       <div class="display-grid">
         <section class="viewer-panel" aria-label="装配体抓取放置动画">
-          <div class="viewer-top"><span>架构装配体 · 三维动作演示</span><span class="viewer-tag">初模轨迹模拟</span></div>
+          <div class="viewer-top"><span>架构装配体 · 三维动作演示</span><div class="viewer-actions"><span class="viewer-tag" id="cameraModeTag">初模轨迹模拟</span><button id="followToggleBtn" class="viewer-toggle" type="button" aria-pressed="true">镜头跟随：开</button><button id="frameToggleBtn" class="viewer-toggle" type="button" aria-pressed="false">隐藏机架</button></div></div>
           <div class="axis-readout" id="axisReadout">X 0 mm · Z -70 mm · Rz 0° · 无独立 Y 轴</div>
           <canvas id="modelCanvas"></canvas>
           <div class="viewer-overlay"><span class="live-dot"></span><span id="actionText">正在载入装配体网格…</span></div>
@@ -28,6 +28,8 @@
               <div class="loading-kicker">ASSEMBLY DIGITAL TWIN</div>
               <div class="loading-title">正在准备分拣模型</div>
               <div class="loading-desc" id="loadingMessage">连接模型资源…</div>
+              <div class="loading-file-size" id="loadingFileSize">正在确认模型文件大小…</div>
+              <div class="loading-meter-label">模型文件读取进度</div>
               <div class="loading-meter"><span id="loadingFill"></span></div>
               <div class="loading-meta"><span id="loadingStage">初始化</span><strong id="loadingPercent">0%</strong></div>
             </div>
